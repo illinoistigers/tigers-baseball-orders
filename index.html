@@ -30,6 +30,14 @@ $('team').addEventListener('change',redraw);$('qty').addEventListener('input',re
 $('minus').addEventListener('click',()=>{$('qty').value=Math.max(0,(quantity()||0)-1);redraw()});$('plus').addEventListener('click',()=>{$('qty').value=Math.min(500,(quantity()||0)+1);redraw()});
 function status(msg,kind=''){$('status').className='notice '+kind;$('status').textContent=msg}
 let pending=null, pollTimer=null, pollCount=0;
+// The deployed Apps Script currently sends a postMessage from its response iframe.
+window.addEventListener('message', event=>{
+ const d=event.data;
+ if (!d || d.type!=='TIGERS_BALL_ORDER_RESULT' || !pending || d.requestId!==pending) return;
+ if (event.origin!=='https://script.google.com' && !event.origin.endsWith('.googleusercontent.com')) return;
+ if (d.ok) finishOrder({found:true,requestId:d.requestId,orderId:d.orderId,totalDozen:d.totalDozen});
+ else { clearTimeout(pollTimer); pending=null; $('submitBtn').disabled=false; $('submitBtn').textContent='Submit team order'; status('The order was not accepted: '+String(d.error||'Unknown error'),'error'); }
+});
 function finishOrder(d){
  if(!pending||d.requestId!==pending||!d.found)return;
  clearTimeout(pollTimer);pending=null;
@@ -52,8 +60,8 @@ function checkOrder(id){
  }else{
    pollTimer=setTimeout(()=>{
      if(pending===id){
-       pending=null;$('submitBtn').disabled=false;$('submitBtn').textContent='Submit team order';
-       status('We could not verify the confirmation. Check the Google Sheet before retrying; the order may have been saved.','error');
+       pending=null;$('submitBtn').disabled=true;$('submitBtn').textContent='Submission sent';
+       status('Your order was sent to the club, but an automatic receipt could not be verified. Please contact the club to confirm it was recorded. Do not submit it again, to avoid a duplicate.');
      }
    },2200);
  }
