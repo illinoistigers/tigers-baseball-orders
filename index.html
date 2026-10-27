@@ -29,45 +29,11 @@ $('ballChip').textContent=p||'SELECT A TEAM';$('ballName').textContent=p?`Rawlin
 $('team').addEventListener('change',redraw);$('qty').addEventListener('input',redraw);
 $('minus').addEventListener('click',()=>{$('qty').value=Math.max(0,(quantity()||0)-1);redraw()});$('plus').addEventListener('click',()=>{$('qty').value=Math.min(500,(quantity()||0)+1);redraw()});
 function status(msg,kind=''){$('status').className='notice '+kind;$('status').textContent=msg}
-let pending=null, pollTimer=null, pollCount=0;
-// The deployed Apps Script currently sends a postMessage from its response iframe.
-window.addEventListener('message', event=>{
- const d=event.data;
- if (!d || d.type!=='TIGERS_BALL_ORDER_RESULT' || !pending || d.requestId!==pending) return;
- if (event.origin!=='https://script.google.com' && !event.origin.endsWith('.googleusercontent.com')) return;
- if (d.ok) finishOrder({found:true,requestId:d.requestId,orderId:d.orderId,totalDozen:d.totalDozen});
- else { clearTimeout(pollTimer); pending=null; $('submitBtn').disabled=false; $('submitBtn').textContent='Submit team order'; status('The order was not accepted: '+String(d.error||'Unknown error'),'error'); }
-});
-function finishOrder(d){
- if(!pending||d.requestId!==pending||!d.found)return;
- clearTimeout(pollTimer);pending=null;
- $('submitBtn').disabled=false;$('submitBtn').textContent='Submit team order';
- status(`Order received! Confirmation: ${d.orderId}. Your ${d.totalDozen} dozen order has been recorded.`,'success');
- $('orderForm').reset();$('qty').value=6;redraw();
-}
-window.tigersOrderStatusCallback=finishOrder;
-function checkOrder(id){
- if(pending!==id)return;
- pollCount++;
- const s=document.createElement('script');
- s.src=APPS_SCRIPT_URL+'?action=status&requestId='+encodeURIComponent(id)+'&cache='+pollCount;
- s.async=true;
- s.onload=()=>s.remove();
- s.onerror=()=>s.remove();
- document.head.appendChild(s);
- if(pollCount<18){
-   pollTimer=setTimeout(()=>checkOrder(id),2000);
- }else{
-   pollTimer=setTimeout(()=>{
-     if(pending===id){
-       pending=null;$('submitBtn').disabled=true;$('submitBtn').textContent='Submission sent';
-       status('Your order was sent to the club, but an automatic receipt could not be verified. Please contact the club to confirm it was recorded. Do not submit it again, to avoid a duplicate.');
-     }
-   },2200);
- }
-}
-$('orderForm').addEventListener('submit',event=>{event.preventDefault();if(!$('orderForm').reportValidity())return;const q=quantity(),p=selectedProduct();if(!Number.isInteger(q)||q<0||q>500){status('Enter a whole number of dozens between 0 and 500.','error');return}if(!p){status('Please choose your team.','error');return}if(!/^https:\/\/script\.google\.com\/macros\/s\//.test(APPS_SCRIPT_URL)){status('The order form has not been connected to Google Sheets yet. An administrator must set the Apps Script URL.','error');return}
-const requestId=(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():'order-'+Date.now()+'-'+Math.floor(Math.random()*1e6);const payload={requestId,team:$('team').value,coach:$('coach').value.trim(),email:$('email').value.trim(),paymentMethod:$('paymentMethod').value,teamDozen:String(q),notes:$('notes').value.trim()};const form=document.createElement('form');form.method='POST';form.action=APPS_SCRIPT_URL;form.target='submissionFrame';form.style.display='none';for(const [key,val] of Object.entries(payload)){const input=document.createElement('input');input.type='hidden';input.name=key;input.value=val;form.appendChild(input)}document.body.appendChild(form);pending=requestId;$('submitBtn').disabled=true;$('submitBtn').textContent='Submitting…';status('Sending order to Google Sheets…');form.submit();form.remove();
-pollCount=0;pollTimer=setTimeout(()=>checkOrder(requestId),1500);
+// Submission is intentionally one-way: Google Apps Script can save a POST
+// even when browser cross-domain confirmation is blocked.
+// Avoid suggesting that this page has independently verified a saved row.
+let submitted=false;
+$('orderForm').addEventListener('submit',event=>{event.preventDefault();if(submitted)return;if(!$('orderForm').reportValidity())return;const q=quantity(),p=selectedProduct();if(!Number.isInteger(q)||q<0||q>500){status('Enter a whole number of dozens between 0 and 500.','error');return}if(!p){status('Please choose your team.','error');return}if(!/^https:\/\/script\.google\.com\/macros\/s\//.test(APPS_SCRIPT_URL)){status('The order form has not been connected to Google Sheets yet. An administrator must set the Apps Script URL.','error');return}
+const requestId=(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():'order-'+Date.now()+'-'+Math.floor(Math.random()*1e6);const payload={requestId,team:$('team').value,coach:$('coach').value.trim(),email:$('email').value.trim(),paymentMethod:$('paymentMethod').value,teamDozen:String(q),notes:$('notes').value.trim()};const form=document.createElement('form');form.method='POST';form.action=APPS_SCRIPT_URL;form.target='submissionFrame';form.style.display='none';for(const [key,val] of Object.entries(payload)){const input=document.createElement('input');input.type='hidden';input.name=key;input.value=val;form.appendChild(input)}document.body.appendChild(form);submitted=true; $('submitBtn').disabled=true; $('submitBtn').textContent='Order submitted';status('Your order has been sent for processing. Please do not submit it again. The club will verify your order in its spreadsheet and coordinate Cash/Check payment.','');form.submit();form.remove();
 });redraw();
 </script></body></html>
